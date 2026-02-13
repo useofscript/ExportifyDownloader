@@ -324,6 +324,7 @@ def run_download(playlist, config) -> int:
                 'artist': r['artist'],
                 'album': r.get('album', ''),
                 'title': r['title'],
+                'search_query': r.get('search_query', f"{r['artist']} - {r['title']}"),
             }
             for r in failed
         ]

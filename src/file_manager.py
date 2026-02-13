@@ -188,14 +188,15 @@ class FileManager:
         
         # Search in album folders
         for ext in extensions:
-            # Check various possible locations
-            potential_files = [
-                self.base_output_dir / safe_artist / "*" / f"{base_name}{ext}",
-                self.base_output_dir / safe_artist / f"{base_name}{ext}",
+            # Check various possible locations using relative glob patterns
+            relative_patterns = [
+                str(Path(safe_artist) / "*" / f"{base_name}{ext}"),
+                str(Path(safe_artist) / f"{base_name}{ext}"),
+                f"{base_name}{ext}",
             ]
             
-            for pattern in potential_files:
-                matches = list(self.base_output_dir.glob(str(pattern).replace("*", "*")))
+            for pattern in relative_patterns:
+                matches = list(self.base_output_dir.glob(pattern))
                 if matches:
                     return True
         
@@ -290,22 +291,23 @@ class FileManager:
         
         return total
     
-    def format_size(self, bytes: int) -> str:
+    def format_size(self, size_bytes: int) -> str:
         """
         Format bytes to human readable size.
         
         Args:
-            bytes: Size in bytes
+            size_bytes: Size in bytes
             
         Returns:
             Formatted string (e.g., "1.5 MB")
         """
+        value = float(size_bytes)
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes < 1024:
-                return f"{bytes:.2f} {unit}"
-            bytes /= 1024
+            if value < 1024:
+                return f"{value:.2f} {unit}"
+            value /= 1024
         
-        return f"{bytes:.2f} PB"
+        return f"{value:.2f} PB"
     
     def list_tracks(self, artist: str = None, album: str = None) -> List[Path]:
         """
@@ -367,14 +369,6 @@ class FileManager:
         # Characters to remove or replace in folders
         invalid_chars = r'[<>:"/\\|?*\x00-\x1f]'
         sanitized = re.sub(invalid_chars, '', name)
-        
-        # Replace certain characters with safe alternatives
-        replacements = {
-            '*': '_',
-            '?': '_',
-        }
-        for old, new in replacements.items():
-            sanitized = sanitized.replace(old, new)
         
         # Limit length
         max_length = 100

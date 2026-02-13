@@ -19,6 +19,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "yt-dlp>=2024.0.0",
+        "spotdl>=4.0.0",
         "mutagen>=1.47.0",
         "Pillow>=10.0.0",
         "rich>=13.0.0",

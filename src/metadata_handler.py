@@ -8,11 +8,11 @@ import re
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 from PIL import Image
-from mutagen import File, FileType
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TPE2, TRCK, TYER, TDRC, TCON, COMM
+from mutagen import File
+from mutagen.id3 import TIT2, TPE1, TALB, TPE2, TRCK, TDRC, TCON, COMM
 from mutagen.mp4 import MP4
 from mutagen.mp3 import MP3
-from mutagen.flac import FLAC
+from mutagen.flac import FLAC, Picture
 import logging
 
 
@@ -72,7 +72,7 @@ class MetadataHandler:
                 self._tag_mp3(audio_path, metadata, album_art_path)
             elif ext == '.flac':
                 self._tag_flac(audio_path, metadata, album_art_path)
-            elif ext in ['.ogg', '.wav']:
+            elif ext == '.ogg':
                 self._tag_vorbis(audio_path, metadata, album_art_path)
             else:
                 logger.warning(f"Unsupported format: {ext}")
@@ -269,8 +269,13 @@ class MetadataHandler:
             with open(cover_path, 'rb') as f:
                 cover_data = f.read()
             
-            # Add cover to M4A
-            audio['covr'] = [cover_data]
+            from mutagen.mp4 import MP4Cover
+            # Add cover to M4A with correct format
+            if cover_path.suffix.lower() in ['.jpg', '.jpeg']:
+                fmt = MP4Cover.FORMAT_JPEG
+            else:
+                fmt = MP4Cover.FORMAT_PNG
+            audio['covr'] = [MP4Cover(cover_data, imageformat=fmt)]
             
         except Exception as e:
             logger.warning(f"Could not embed cover in M4A: {e}")
@@ -320,7 +325,7 @@ class MetadataHandler:
                 cover_data = f.read()
             
             # Add picture to FLAC
-            picture = FLAC.Picture()
+            picture = Picture()
             picture.data = cover_data
             
             # Set picture type
@@ -550,7 +555,7 @@ class MetadataHandler:
                         milliseconds = match.group(3)
                         
                         # Calculate total seconds
-                        total_seconds = minutes * 60 + seconds + int(milliseconds) / 100
+                        total_seconds = minutes * 60 + seconds + int(milliseconds) / (10 ** len(milliseconds))
                         
                         # Extract lyrics text
                         lyrics_text = re.sub(pattern, '', line).strip()
@@ -593,7 +598,8 @@ class MetadataHandler:
                 }
                 for src, dst in mapping.items():
                     if src in audio:
-                        metadata[dst] = audio[src]
+                        val = audio[src]
+                        metadata[dst] = val[0] if isinstance(val, list) and val else val
             
             elif ext == '.mp3':
                 audio = MP3(str(audio_path))
@@ -610,7 +616,8 @@ class MetadataHandler:
                 audio = FLAC(str(audio_path))
                 for field in ['TITLE', 'ARTIST', 'ALBUM', 'DATE', 'GENRE']:
                     if field in audio:
-                        metadata[field.lower()] = str(audio[field])
+                        val = audio[field]
+                        metadata[field.lower()] = val[0] if isinstance(val, list) and val else str(val)
             
         except Exception as e:
             logger.warning(f"Could not read metadata: {e}")

@@ -278,6 +278,7 @@ class YouTubeDownloader:
                     if label in active_tracks:
                         active_tracks.remove(label)
 
+        futures = {}
         try:
             with Live(
                 self._build_live_display(total, 0, [], []),
@@ -635,6 +636,8 @@ class YouTubeDownloader:
     def _setup_logger(self) -> object:
         """Setup custom logger for yt-dlp."""
         class YTDLLogger:
+            verbose = False
+
             def debug(self, msg):
                 if self.verbose:
                     console.print(f"[dim]{msg}[/dim]")
