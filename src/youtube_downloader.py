@@ -379,9 +379,10 @@ class YouTubeDownloader:
         if self.config.create_lrc:
             cmd.append("--generate-lrc")
 
-        # 45s timeout — generous enough for real downloads on slower connections,
-        # but catches rate-limit hangs. 3 consecutive timeouts = rate-limited.
-        timeout = min(self.config.download_timeout, 45)
+        # 10s timeout — spotdl downloads typically finish in a few seconds.
+        # When rate-limited it hangs forever, so this catches it fast.
+        # 3 consecutive timeouts = rate-limited → switch to yt-dlp.
+        timeout = min(self.config.download_timeout, 10)
 
         try:
             proc = subprocess.run(

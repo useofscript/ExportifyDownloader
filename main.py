@@ -312,6 +312,47 @@ def run_download(playlist, config) -> int:
     if results:
         print_download_summary(results, elapsed_time)
 
+    # Retry failed downloads
+    failed = [r for r in results if not r.get('success') and not r.get('skipped')]
+    while failed:
+        console.print(f"\n[yellow]{len(failed)} track(s) failed.[/yellow]")
+        if not Confirm.ask("[cyan]Retry failed downloads?[/cyan]", default=True):
+            break
+
+        retry_tracks = [
+            {
+                'artist': r['artist'],
+                'album': r.get('album', ''),
+                'title': r['title'],
+            }
+            for r in failed
+        ]
+
+        downloader.reset_stats()
+        console.print(f"[cyan]Retrying {len(retry_tracks)} tracks...[/cyan]\n")
+
+        try:
+            retry_results = downloader.download_batch(
+                retry_tracks,
+                progress_callback=lambda current, total: None,
+            )
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Cancelled.[/yellow]")
+            break
+
+        retry_elapsed = (datetime.now() - start_time).total_seconds() - elapsed_time
+        if retry_results:
+            print_download_summary(retry_results, retry_elapsed)
+
+        # Update main results: swap failed entries with retry outcomes
+        retry_map = {(r['artist'], r['title']): r for r in retry_results}
+        for i, r in enumerate(results):
+            key = (r['artist'], r['title'])
+            if key in retry_map:
+                results[i] = retry_map[key]
+
+        failed = [r for r in retry_results if not r.get('success') and not r.get('skipped')]
+
     console.print(f"\n[green]Downloads saved to:[/green] {config.output_dir}")
     return 0
 
