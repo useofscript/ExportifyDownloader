@@ -74,6 +74,10 @@ class YouTubeDownloader:
         self._failed_count = 0
         self._skipped_count = 0
 
+        # Cancellation & rate-limit detection
+        self._cancelled = threading.Event()
+        self._rate_limited = threading.Event()
+
         # Console for output
         self.console = Console()
 
@@ -110,6 +114,11 @@ class YouTubeDownloader:
         }
 
         try:
+            # Bail early if cancelled or rate-limited
+            if self._cancelled.is_set() or self._rate_limited.is_set():
+                result['error'] = 'Cancelled'
+                return result
+
             # Check if already exists
             if self.config.skip_existing:
                 if self.file_manager.check_track_exists(artist, album, title):
@@ -200,6 +209,8 @@ class YouTubeDownloader:
         """
         Download multiple tracks with a live in-place progress display.
 
+        Handles Ctrl+C gracefully and aborts early on rate limits.
+
         Args:
             tracks: List of dicts with 'artist', 'album', 'title'
             progress_callback: Optional callback(completed, total)
@@ -212,10 +223,24 @@ class YouTubeDownloader:
         if total == 0:
             return results
 
+        # Reset cancellation flags
+        self._cancelled.clear()
+        self._rate_limited.clear()
+
         active_tracks: List[str] = []
         active_lock = threading.Lock()
 
         def _wrapped_download(track: Dict[str, str]) -> Dict[str, Any]:
+            # Skip work if cancelled / rate-limited
+            if self._cancelled.is_set() or self._rate_limited.is_set():
+                return {
+                    'artist': track['artist'],
+                    'album': track['album'],
+                    'title': track['title'],
+                    'success': False,
+                    'error': 'Cancelled',
+                }
+
             label = f"{track['artist']} – {track['title']}"
             with active_lock:
                 active_tracks.append(label)
@@ -231,42 +256,64 @@ class YouTubeDownloader:
                     if label in active_tracks:
                         active_tracks.remove(label)
 
-        with Live(
-            self._build_live_display(total, 0, [], []),
-            console=self.console,
-            refresh_per_second=4,
-            transient=True,
-        ) as live:
-            with ThreadPoolExecutor(
-                max_workers=self.config.parallel_downloads
-            ) as executor:
-                futures = {}
-                for track in tracks:
-                    future = executor.submit(_wrapped_download, track)
-                    futures[future] = track
+        try:
+            with Live(
+                self._build_live_display(total, 0, [], []),
+                console=self.console,
+                refresh_per_second=4,
+                transient=True,
+            ) as live:
+                with ThreadPoolExecutor(
+                    max_workers=self.config.parallel_downloads
+                ) as executor:
+                    futures = {}
+                    for track in tracks:
+                        future = executor.submit(_wrapped_download, track)
+                        futures[future] = track
 
-                for future in as_completed(futures):
-                    track = futures[future]
-                    try:
-                        result = future.result()
-                        results.append(result)
-                    except Exception as e:
-                        results.append({
-                            'artist': track['artist'],
-                            'album': track['album'],
-                            'title': track['title'],
-                            'success': False,
-                            'error': str(e),
-                        })
+                    for future in as_completed(futures):
+                        track = futures[future]
+                        try:
+                            result = future.result()
+                            results.append(result)
+                        except Exception as e:
+                            results.append({
+                                'artist': track['artist'],
+                                'album': track['album'],
+                                'title': track['title'],
+                                'success': False,
+                                'error': str(e),
+                            })
 
-                    with active_lock:
-                        snapshot = list(active_tracks)
-                    live.update(
-                        self._build_live_display(
-                            total, len(results), snapshot, results))
+                        with active_lock:
+                            snapshot = list(active_tracks)
+                        live.update(
+                            self._build_live_display(
+                                total, len(results), snapshot, results))
 
-                    if progress_callback:
-                        progress_callback(len(results), total)
+                        if progress_callback:
+                            progress_callback(len(results), total)
+
+                        # Abort early on rate limit
+                        if self._rate_limited.is_set():
+                            self._cancelled.set()
+                            # Cancel pending futures
+                            for f in futures:
+                                f.cancel()
+                            break
+
+        except KeyboardInterrupt:
+            self._cancelled.set()
+            self.console.print(
+                "\n[yellow]Stopping downloads... please wait for active tracks to finish.[/yellow]")
+            # Cancel any pending (not yet started) futures
+            for f in futures:
+                f.cancel()
+
+        if self._rate_limited.is_set():
+            self.console.print(
+                "\n[red bold]Rate limited by Spotify/YouTube.[/red bold] "
+                "Try again later or reduce parallel downloads.")
 
         return results
 
@@ -301,13 +348,23 @@ class YouTubeDownloader:
         if self.config.create_lrc:
             cmd.append("--generate-lrc")
 
+        # Use a shorter timeout (90s) — spotdl shouldn't take longer per track
+        timeout = min(self.config.download_timeout, 90)
+
         try:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.config.download_timeout,
+                timeout=timeout,
             )
+
+            combined_output = (proc.stdout or "") + (proc.stderr or "")
+
+            # Detect rate limiting and abort early
+            if "rate" in combined_output.lower() and "limit" in combined_output.lower():
+                self._rate_limited.set()
+                return False, None, "Rate limited — try again later"
 
             # Look for the downloaded file in output_dir
             output_path = Path(output_dir)

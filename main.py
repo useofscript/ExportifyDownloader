@@ -182,7 +182,7 @@ def interactive_mode() -> int:
         "[cyan]How many songs to download at once?[/cyan]",
         default=3,
     )
-    parallel = max(1, min(parallel, 10))
+    parallel = max(1, min(parallel, 30))
 
     # Step 8: Preview first?
     console.print()
@@ -296,14 +296,19 @@ def run_download(playlist, config) -> int:
     console.print(f"[cyan]Downloading {len(download_tracks)} tracks...[/cyan]\n")
     start_time = datetime.now()
 
-    results = downloader.download_batch(
-        download_tracks,
-        progress_callback=lambda current, total: None,
-    )
+    try:
+        results = downloader.download_batch(
+            download_tracks,
+            progress_callback=lambda current, total: None,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled.[/yellow]")
+        return 1
 
     elapsed_time = (datetime.now() - start_time).total_seconds()
 
-    print_download_summary(results, elapsed_time)
+    if results:
+        print_download_summary(results, elapsed_time)
 
     console.print(f"\n[green]Downloads saved to:[/green] {config.output_dir}")
     return 0
