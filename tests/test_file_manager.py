@@ -247,3 +247,37 @@ class TestConvenienceFunctions:
         assert isinstance(fm, FileManager)
         assert fm.base_dir == Path("/tmp/test")
 
+
+class TestOrganizeFlag:
+    """Tests for organize (flat vs folder) mode."""
+
+    @pytest.fixture
+    def temp_dir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            yield Path(tmp)
+
+    def test_organize_true_creates_subfolders(self, temp_dir):
+        """With organize=True, tracks go into Artist/Album subfolders."""
+        fm = FileManager(str(temp_dir), organize=True)
+        path, _ = fm.get_track_path("Nirvana", "Nevermind", "Smells Like Teen Spirit")
+        assert path.parent == temp_dir / "Nirvana" / "Nevermind"
+
+    def test_organize_false_flat(self, temp_dir):
+        """With organize=False, tracks go directly into the base dir."""
+        fm = FileManager(str(temp_dir), organize=False)
+        path, _ = fm.get_track_path("Nirvana", "Nevermind", "Smells Like Teen Spirit")
+        assert path.parent == temp_dir
+
+    def test_organize_false_check_exists(self, temp_dir):
+        """check_track_exists works in flat mode."""
+        fm = FileManager(str(temp_dir), organize=False)
+        assert fm.check_track_exists("Nirvana", "Nevermind", "Drain You") is False
+        # Create the file in base dir
+        (temp_dir / "Nirvana - Drain You.m4a").touch()
+        assert fm.check_track_exists("Nirvana", "Nevermind", "Drain You") is True
+
+    def test_organize_default_is_true(self, temp_dir):
+        """Default organize value is True."""
+        fm = FileManager(str(temp_dir))
+        assert fm.organize is True
+

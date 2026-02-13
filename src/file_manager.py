@@ -22,14 +22,16 @@ class FileManager:
     - Manage LRC files
     """
     
-    def __init__(self, base_output_dir: str = "~/Music"):
+    def __init__(self, base_output_dir: str = "~/Music", organize: bool = True):
         """
         Initialize file manager.
         
         Args:
             base_output_dir: Base output directory (default: ~/Music)
+            organize: If True, create Artist/Album subfolders; if False, save flat
         """
         self.base_output_dir = Path(os.path.expanduser(base_output_dir))
+        self.organize = organize
         
         # Create base directory if it doesn't exist
         self.base_output_dir.mkdir(parents=True, exist_ok=True)
@@ -48,8 +50,12 @@ class FileManager:
             album: Album name
             
         Returns:
-            Path to album folder
+            Path to album folder (or base dir if organize=False)
         """
+        if not self.organize:
+            self.base_output_dir.mkdir(parents=True, exist_ok=True)
+            return self.base_output_dir
+
         safe_artist = self._sanitize_folder_name(artist)
         safe_album = self._sanitize_folder_name(album)
         
@@ -460,15 +466,16 @@ class FileManager:
 
 
 # Convenience functions
-def get_file_manager(base_dir: str = "~/Music") -> FileManager:
+def get_file_manager(base_dir: str = "~/Music", organize: bool = True) -> FileManager:
     """
     Create FileManager instance.
-    
+
     Args:
         base_dir: Base output directory
-        
+        organize: If True, create Artist/Album subfolders
+
     Returns:
         FileManager instance
     """
-    return FileManager(base_dir)
+    return FileManager(base_dir, organize=organize)
 

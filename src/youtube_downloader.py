@@ -65,7 +65,10 @@ class YouTubeDownloader:
             config: Configuration object
         """
         self.config = config or get_config()
-        self.file_manager = FileManager(str(self.config.output_dir))
+        self.file_manager = FileManager(
+            str(self.config.output_dir),
+            organize=bool(self.config.folder_structure),
+        )
         self.metadata_handler = MetadataHandler(self.config.album_art_size)
 
         # Track download state

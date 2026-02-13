@@ -253,6 +253,8 @@ def cli_mode(args) -> int:
         config.skip_existing = False
     if args.no_lrc:
         config.create_lrc = False
+    if args.no_folders:
+        config._settings["folder_structure"] = ""
 
     # Show config
     console.print(f"\n[cyan]Output Directory:[/cyan] {config.output_dir}")
@@ -349,13 +351,15 @@ Examples:
     dl_parser.add_argument('-o', '--output', type=str, default=None,
                            help='Output directory (default: ~/Music)')
     dl_parser.add_argument('-p', '--parallel', type=int, default=None,
-                           help='Number of parallel downloads (default: 3)')
+                           help='Number of parallel downloads (default: 4)')
     dl_parser.add_argument('-v', '--verbose', action='store_true',
                            help='Verbose output')
     dl_parser.add_argument('--no-skip-existing', action='store_true',
                            help='Re-download files that already exist')
     dl_parser.add_argument('--no-lrc', action='store_true',
                            help='Disable LRC lyrics file generation')
+    dl_parser.add_argument('--no-folders', action='store_true',
+                           help='Save all files flat (no Artist/Album subfolders)')
     dl_parser.add_argument('--dry-run', action='store_true',
                            help='Preview tracks without downloading')
     dl_parser.add_argument('--config', type=str, default=None,
