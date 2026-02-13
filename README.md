@@ -11,10 +11,7 @@ Download your Spotify playlists as high-quality audio files. Export a playlist C
 sudo apt install ffmpeg         # Ubuntu/Debian
 sudo dnf install ffmpeg         # Fedora
 
-# Install spotdl (download backend)
-pip install spotdl
-
-# Install this tool
+# Install the tool (pulls in spotdl + yt-dlp automatically)
 git clone https://github.com/useofscript/Exportify-Linux.git
 cd Exportify-Linux
 pip install -e .
@@ -33,7 +30,7 @@ pip install -e .
 exportifydl run
 ```
 
-That's it. The interactive wizard will find your CSV, let you pick options, and start downloading.
+That's it. The interactive wizard will find your CSV, let you pick options, and start downloading. Failed tracks can be retried at the end.
 
 ## Commands
 
@@ -47,24 +44,28 @@ That's it. The interactive wizard will find your CSV, let you pick options, and 
 ### Download Options
 
 ```bash
-exportifydl download playlist.csv --output ~/Music --parallel 3 --skip-existing --create-lrc
+exportifydl download playlist.csv --output ~/Music --parallel 6
 ```
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-o, --output` | Where to save files | `~/Music` |
-| `-p, --parallel` | Simultaneous downloads | `3` |
-| `-s, --skip-existing` | Skip already downloaded tracks | off |
-| `-c, --create-lrc` | Generate synced lyrics files | off |
+| `-p, --parallel` | Simultaneous downloads | `4` |
+| `--no-skip-existing` | Re-download files that already exist | skip on |
+| `--no-lrc` | Disable lyrics (.lrc) file generation | lyrics on |
+| `--no-folders` | Save all files flat (no Artist/Album dirs) | folders on |
 | `--dry-run` | Preview only, don't download | off |
 | `-v, --verbose` | Show detailed output | off |
+| `--config` | Path to a config JSON file | none |
 
 ## How It Works
 
 1. Parses your Exportify CSV to get track info (artist, title, album)
-2. Uses [spotdl](https://github.com/spotDL/spotify-downloader) to find and download each track
-3. Embeds metadata and album art automatically
-4. Saves files organized by artist and album:
+2. Uses [spotdl](https://github.com/spotDL/spotify-downloader) as the primary backend to download each track
+3. Automatically falls back to [yt-dlp](https://github.com/yt-dlp/yt-dlp) if spotdl is rate-limited
+4. Embeds metadata and album art automatically
+5. After downloading, prompts to retry any failed tracks
+6. Saves files organized by artist and album:
 
 ```
 ~/Music/
@@ -78,18 +79,20 @@ exportifydl download playlist.csv --output ~/Music --parallel 3 --skip-existing 
 
 - Python 3.9+
 - ffmpeg
-- [spotdl](https://github.com/spotDL/spotify-downloader) (primary) or yt-dlp (fallback)
+- [spotdl](https://github.com/spotDL/spotify-downloader) (primary backend)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) (fallback backend)
+
+Both backends are installed automatically via `pip install -e .`
 
 ## Troubleshooting
 
-**Downloads failing?** Make sure spotdl is installed and working:
-```bash
-spotdl download "Metallica - Enter Sandman" --output /tmp/test
-```
+**spotdl rate-limited?** The tool will automatically switch to yt-dlp. The spotdl cooldown resets after 24 hours.
+
+**Age-restricted YouTube videos?** Some tracks fail because YouTube requires sign-in. These cannot be downloaded without browser cookies.
 
 **ffmpeg not found?** Install it with your package manager (see install section above).
 
-**Tracks being skipped?** Use `--skip-existing` only if you want to skip files you already have.
+**Want to re-download everything?** Use `--no-skip-existing` to overwrite files you already have.
 
 ---
 
