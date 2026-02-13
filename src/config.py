@@ -14,7 +14,7 @@ class Config:
     
     # Default settings
     DEFAULT_OUTPUT_DIR = "~/Music"
-    DEFAULT_PARALLEL_DOWNLOADS = 3
+    DEFAULT_PARALLEL_DOWNLOADS = 4
     DEFAULT_SKIP_EXISTING = True
     DEFAULT_CREATE_LRC = True
     DEFAULT_ALBUM_ART_SIZE = 1200

@@ -368,7 +368,7 @@ class YouTubeDownloader:
             "--output", output_template,
             "--format", "m4a",
             "--bitrate", "auto",
-            "--threads", "1",
+            "--threads", "4",
             "--print-errors",
             "--overwrite", "skip",
         ]
@@ -376,9 +376,9 @@ class YouTubeDownloader:
         if self.config.create_lrc:
             cmd.append("--generate-lrc")
 
-        # Short timeout — a normal track downloads in <15s.
-        # When rate-limited, spotdl hangs doing nothing, so this catches it fast.
-        timeout = min(self.config.download_timeout, 15)
+        # 45s timeout — generous enough for real downloads on slower connections,
+        # but catches rate-limit hangs. 3 consecutive timeouts = rate-limited.
+        timeout = min(self.config.download_timeout, 45)
 
         try:
             proc = subprocess.run(
@@ -464,23 +464,30 @@ class YouTubeDownloader:
         cmd = [
             "yt-dlp",
             f"ytsearch:{query}",
+            "--format", "bestaudio[ext=m4a]/bestaudio/best",
             "-x", "--audio-format", "m4a",
+            "--audio-quality", "0",
             "-o", output_template,
             "--max-downloads", "1",
             "--no-playlist",
+            "--concurrent-fragments", "4",
             "--retries", str(self.config.max_retries),
+            "--no-warnings",
         ]
 
         # Add deno runtime if available
         if shutil.which("deno"):
             cmd.extend(["--js-runtimes", "deno"])
 
+        # 60s is generous for a single track — avoids blocking too long on fallback
+        yt_timeout = min(self.config.download_timeout, 60)
+
         try:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=self.config.download_timeout,
+                timeout=yt_timeout,
             )
 
             # Look for the downloaded file

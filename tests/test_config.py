@@ -22,7 +22,7 @@ class TestConfig:
     def test_default_values(self, config):
         """Test default configuration values."""
         assert config.output_dir == Path(os.path.expanduser("~/Music"))
-        assert config.parallel_downloads == 3
+        assert config.parallel_downloads == 4
         assert config.skip_existing is True
         assert config.create_lrc is True
         assert config.album_art_size == 1200
@@ -133,7 +133,7 @@ class TestConfig:
         
         # Should not raise, just warn
         config = Config(str(invalid_path))
-        assert config.parallel_downloads == 3  # Default value
+        assert config.parallel_downloads == 4  # Default value
 
 
 class TestGlobalConfig:
@@ -156,5 +156,5 @@ class TestGlobalConfig:
         reset_config()
         config2 = get_config()
         
-        assert config2.parallel_downloads == 3  # Default value
+        assert config2.parallel_downloads == 4  # Default value
 

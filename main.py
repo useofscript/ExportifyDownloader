@@ -180,7 +180,7 @@ def interactive_mode() -> int:
     # Step 7: Parallel downloads
     parallel = IntPrompt.ask(
         "[cyan]How many songs to download at once?[/cyan]",
-        default=3,
+        default=4,
     )
     parallel = max(1, min(parallel, 30))
 
