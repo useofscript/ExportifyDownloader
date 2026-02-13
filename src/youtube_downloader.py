@@ -77,6 +77,7 @@ class YouTubeDownloader:
         # Cancellation & rate-limit detection
         self._cancelled = threading.Event()
         self._rate_limited = threading.Event()
+        self._consecutive_timeouts = 0
 
         # Console for output
         self.console = Console()
@@ -327,9 +328,18 @@ class YouTubeDownloader:
         """
         Download a track using spotdl subprocess.
 
+        Uses a short timeout (15s) because spotdl hangs indefinitely when
+        rate-limited and buffers all output until killed.  After the timeout
+        kills the process, we inspect the captured output for a rate-limit
+        message.
+
         Returns:
             (success: bool, file_path: str | None, error: str | None)
         """
+        # Bail immediately if already rate-limited or cancelled
+        if self._rate_limited.is_set() or self._cancelled.is_set():
+            return False, None, "Cancelled"
+
         query = search_query or f"{artist} - {title}"
 
         # spotdl output template — put file in the target directory
@@ -348,8 +358,9 @@ class YouTubeDownloader:
         if self.config.create_lrc:
             cmd.append("--generate-lrc")
 
-        # Use a shorter timeout (90s) — spotdl shouldn't take longer per track
-        timeout = min(self.config.download_timeout, 90)
+        # Short timeout — a normal track downloads in <15s.
+        # When rate-limited, spotdl hangs doing nothing, so this catches it fast.
+        timeout = min(self.config.download_timeout, 15)
 
         try:
             proc = subprocess.run(
@@ -359,10 +370,9 @@ class YouTubeDownloader:
                 timeout=timeout,
             )
 
-            combined_output = (proc.stdout or "") + (proc.stderr or "")
+            combined = (proc.stdout or "") + (proc.stderr or "")
 
-            # Detect rate limiting and abort early
-            if "rate" in combined_output.lower() and "limit" in combined_output.lower():
+            if self._is_rate_limited_output(combined):
                 self._rate_limited.set()
                 return False, None, "Rate limited — try again later"
 
@@ -375,20 +385,46 @@ class YouTubeDownloader:
             )
 
             if candidates:
+                # Reset consecutive failures on success
+                with self._download_lock:
+                    self._consecutive_timeouts = 0
                 return True, str(candidates[0]), None
 
             # If no file found, treat as failure
-            stderr = (proc.stderr or "").strip()
-            stdout = (proc.stdout or "").strip()
-            err_msg = stderr or stdout or "spotdl produced no output file"
+            err_msg = combined.strip()[:200] or "spotdl produced no output file"
             return False, None, err_msg
 
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as e:
+            # spotdl buffers output — on kill, Python captures what was buffered
+            captured = ""
+            if e.stdout:
+                captured += e.stdout if isinstance(e.stdout, str) else e.stdout.decode("utf-8", errors="replace")
+            if e.stderr:
+                captured += e.stderr if isinstance(e.stderr, str) else e.stderr.decode("utf-8", errors="replace")
+
+            if self._is_rate_limited_output(captured):
+                self._rate_limited.set()
+                return False, None, "Rate limited — try again later"
+
+            # Track consecutive timeouts — 3 in a row = likely rate-limited
+            with self._download_lock:
+                self._consecutive_timeouts += 1
+                if self._consecutive_timeouts >= 3:
+                    self._rate_limited.set()
+                    return False, None, "Multiple timeouts — likely rate limited"
+
             return False, None, "Download timed out"
+
         except FileNotFoundError:
             return False, None, "spotdl not found — install with: pip install spotdl"
         except Exception as e:
             return False, None, str(e)
+
+    @staticmethod
+    def _is_rate_limited_output(text: str) -> bool:
+        """Check if output text indicates a rate limit."""
+        lower = text.lower()
+        return "rate" in lower and "limit" in lower
 
     # ------------------------------------------------------------------ #
     #  yt-dlp fallback backend
@@ -647,6 +683,7 @@ class YouTubeDownloader:
             self._completed_count = 0
             self._failed_count = 0
             self._skipped_count = 0
+            self._consecutive_timeouts = 0
 
 
 # Convenience function
