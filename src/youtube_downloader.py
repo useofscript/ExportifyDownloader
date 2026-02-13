@@ -370,7 +370,7 @@ class YouTubeDownloader:
             "--bitrate", "auto",
             "--threads", "4",
             "--print-errors",
-            "--overwrite", "skip",
+            "--overwrite", "skip" if self.config.skip_existing else "force",
         ]
 
         if self.config.create_lrc:
@@ -474,6 +474,10 @@ class YouTubeDownloader:
             "--retries", str(self.config.max_retries),
             "--no-warnings",
         ]
+
+        # Overwrite existing files when skip_existing is disabled
+        if not self.config.skip_existing:
+            cmd.append("--force-overwrites")
 
         # Add deno runtime if available
         if shutil.which("deno"):
