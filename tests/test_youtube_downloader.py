@@ -40,6 +40,8 @@ class TestYouTubeDownloader:
         assert downloader._completed_count == 0
         assert downloader._failed_count == 0
         assert downloader._skipped_count == 0
+        assert downloader._consecutive_timeouts == 0
+        assert downloader._backend_switched is False
 
     def test_get_stats(self, downloader):
         """Test stats tracking."""
@@ -115,9 +117,28 @@ class TestYouTubeDownloader:
         assert result['file_path'] == "/tmp/test/artist/Test Song.m4a"
 
     def test_download_track_spotdl_failure(self, downloader, config):
-        """Test failed download via spotdl backend."""
+        """Test failed download via spotdl — falls back to yt-dlp."""
         config.skip_existing = False
         downloader._use_spotdl = True
+        downloader._has_ytdlp = True
+
+        with patch.object(downloader.file_manager, 'get_track_path',
+                          return_value=(Path("/tmp/test/Test Song.m4a"), False)):
+            with patch.object(downloader, '_download_with_spotdl',
+                              return_value=(False, None, "No results found")):
+                with patch.object(downloader, '_download_with_ytdlp',
+                                  return_value=(True, "/tmp/test/Test Song.m4a", None)):
+                    result = downloader.download_track("Test Artist", "Test Album", "Test Song")
+
+        # Failover succeeded via yt-dlp
+        assert result['success'] is True
+        assert result['file_path'] == "/tmp/test/Test Song.m4a"
+
+    def test_download_track_spotdl_failure_no_ytdlp(self, downloader, config):
+        """Test failed download via spotdl when yt-dlp is unavailable."""
+        config.skip_existing = False
+        downloader._use_spotdl = True
+        downloader._has_ytdlp = False
 
         with patch.object(downloader.file_manager, 'get_track_path',
                           return_value=(Path("/tmp/test/Test Song.m4a"), False)):
@@ -132,6 +153,7 @@ class TestYouTubeDownloader:
         """Test yt-dlp fallback when spotdl is unavailable."""
         config.skip_existing = False
         downloader._use_spotdl = False
+        downloader._has_ytdlp = True
 
         with patch.object(downloader.file_manager, 'get_track_path',
                           return_value=(Path("/tmp/test/Test Song.m4a"), False)):
@@ -140,6 +162,40 @@ class TestYouTubeDownloader:
                 result = downloader.download_track("Test Artist", "Test Album", "Test Song")
 
         assert result['success'] is True
+
+    def test_download_track_rate_limited_switches_backend(self, downloader, config):
+        """Test that rate-limited spotdl automatically switches to yt-dlp."""
+        config.skip_existing = False
+        downloader._use_spotdl = True
+        downloader._has_ytdlp = True
+        downloader._rate_limited.set()  # Simulate spotdl rate-limited
+
+        with patch.object(downloader.file_manager, 'get_track_path',
+                          return_value=(Path("/tmp/test/Test Song.m4a"), False)):
+            with patch.object(downloader, '_download_with_ytdlp',
+                              return_value=(True, "/tmp/test/Test Song.m4a", None)) as mock_ytdlp:
+                result = downloader.download_track("Test Artist", "Test Album", "Test Song")
+
+        # Should have skipped spotdl and gone straight to yt-dlp
+        mock_ytdlp.assert_called_once()
+        assert result['success'] is True
+
+    def test_download_track_both_backends_unavailable(self, downloader, config):
+        """Test when both backends fail."""
+        config.skip_existing = False
+        downloader._use_spotdl = True
+        downloader._has_ytdlp = True
+
+        with patch.object(downloader.file_manager, 'get_track_path',
+                          return_value=(Path("/tmp/test/Test Song.m4a"), False)):
+            with patch.object(downloader, '_download_with_spotdl',
+                              return_value=(False, None, "spotdl failed")):
+                with patch.object(downloader, '_download_with_ytdlp',
+                                  return_value=(False, None, "yt-dlp failed")):
+                    result = downloader.download_track("Test Artist", "Test Album", "Test Song")
+
+        assert result['success'] is False
+        assert result['error'] == "yt-dlp failed"
 
     def test_extract_lyrics_from_description(self, downloader):
         """Test lyrics extraction from video description."""

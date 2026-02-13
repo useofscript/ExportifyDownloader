@@ -82,8 +82,10 @@ class YouTubeDownloader:
         # Console for output
         self.console = Console()
 
-        # Detect available backend
+        # Detect available backends
         self._use_spotdl = _check_spotdl()
+        self._has_ytdlp = _check_ytdlp()
+        self._backend_switched = False  # True once we auto-switched from spotdl→yt-dlp
 
     # ------------------------------------------------------------------ #
     #  Single track download
@@ -115,8 +117,8 @@ class YouTubeDownloader:
         }
 
         try:
-            # Bail early if cancelled or rate-limited
-            if self._cancelled.is_set() or self._rate_limited.is_set():
+            # Bail early if cancelled
+            if self._cancelled.is_set():
                 result['error'] = 'Cancelled'
                 return result
 
@@ -134,12 +136,28 @@ class YouTubeDownloader:
             track_path, _ = self.file_manager.get_track_path(artist, album, title)
             output_dir = str(track_path.parent)
 
-            if self._use_spotdl:
+            ok, fpath, err = False, None, None
+
+            # Try primary backend
+            use_spotdl = self._use_spotdl and not self._rate_limited.is_set()
+            if use_spotdl:
                 ok, fpath, err = self._download_with_spotdl(
                     artist, album, title, output_dir, search_query)
-            else:
+
+            # Failsafe: if primary backend failed/timed-out/rate-limited,
+            # automatically switch to the other backend for this track.
+            if not ok and self._has_ytdlp:
+                if use_spotdl and not self._backend_switched and self._rate_limited.is_set():
+                    self._backend_switched = True
+                    self.console.print(
+                        "\n[yellow bold]⚡ Switching to yt-dlp backend "
+                        "(spotdl rate-limited)[/yellow bold]")
                 ok, fpath, err = self._download_with_ytdlp(
                     artist, album, title, output_dir, search_query)
+
+            # If spotdl was skipped (rate-limited) and yt-dlp not available
+            if not ok and not use_spotdl and not self._has_ytdlp:
+                err = 'All download backends unavailable'
 
             if ok and fpath:
                 result['success'] = True
@@ -232,8 +250,8 @@ class YouTubeDownloader:
         active_lock = threading.Lock()
 
         def _wrapped_download(track: Dict[str, str]) -> Dict[str, Any]:
-            # Skip work if cancelled / rate-limited
-            if self._cancelled.is_set() or self._rate_limited.is_set():
+            # Skip work only if user cancelled (Ctrl+C)
+            if self._cancelled.is_set():
                 return {
                     'artist': track['artist'],
                     'album': track['album'],
@@ -295,10 +313,10 @@ class YouTubeDownloader:
                         if progress_callback:
                             progress_callback(len(results), total)
 
-                        # Abort early on rate limit
-                        if self._rate_limited.is_set():
+                        # If BOTH backends are exhausted, stop
+                        if (self._rate_limited.is_set()
+                                and not self._has_ytdlp):
                             self._cancelled.set()
-                            # Cancel pending futures
                             for f in futures:
                                 f.cancel()
                             break
@@ -311,10 +329,10 @@ class YouTubeDownloader:
             for f in futures:
                 f.cancel()
 
-        if self._rate_limited.is_set():
+        if self._rate_limited.is_set() and not self._has_ytdlp:
             self.console.print(
-                "\n[red bold]Rate limited by Spotify/YouTube.[/red bold] "
-                "Try again later or reduce parallel downloads.")
+                "\n[red bold]Rate limited and no fallback backend available.[/red bold] "
+                "Try again later or install yt-dlp.")
 
         return results
 
@@ -684,6 +702,7 @@ class YouTubeDownloader:
             self._failed_count = 0
             self._skipped_count = 0
             self._consecutive_timeouts = 0
+            self._backend_switched = False
 
 
 # Convenience function
