@@ -1,5 +1,9 @@
 # Exportify Downloader
 
+> [!WARNING]
+> **This project is discontinued and archived.**
+> It is no longer maintained, and no new fixes or features will be added.
+
 Download your Spotify playlists as high-quality audio files. Export a playlist CSV from [Exportify](https://exportify.net/), then run one command.
 
 ## Quick Start
@@ -97,4 +101,3 @@ Both backends are installed automatically via `pip install -e .`
 ---
 
 *For personal use only. Respect copyright and terms of service.*
-

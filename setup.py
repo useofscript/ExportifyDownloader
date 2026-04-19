@@ -38,7 +38,7 @@ setup(
         ],
     },
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 7 - Inactive",
         "Intended Audience :: End Users/Desktop",
         "License :: OSI Approved :: MIT License",
         "Operating System :: POSIX :: Linux",
@@ -60,4 +60,3 @@ setup(
         "Documentation": "https://github.com/exportify-downloader/exportify_downloader#readme",
     },
 )
-
